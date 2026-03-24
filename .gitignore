@@ -2,8 +2,8 @@
 node_modules/
 bun.lock
 
-# Build output
-dist/
+# Build output (kept in repo for GitHub-based installs)
+# dist/
 *.tgz
 
 # Logs

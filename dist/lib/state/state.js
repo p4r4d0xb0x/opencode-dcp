@@ -1,0 +1,134 @@
+import { loadSessionState, saveSessionState } from "./persistence";
+import { isSubAgentSession, findLastCompactionTimestamp, countTurns, resetOnCompaction, createPruneMessagesState, loadPruneMessagesState, loadPruneMap, collectTurnNudgeAnchors, } from "./utils";
+import { getLastUserMessage } from "../shared-utils";
+export const checkSession = async (client, state, logger, messages, manualModeDefault) => {
+    const lastUserMessage = getLastUserMessage(messages);
+    if (!lastUserMessage) {
+        return;
+    }
+    const lastSessionId = lastUserMessage.info.sessionID;
+    if (state.sessionId === null || state.sessionId !== lastSessionId) {
+        logger.info(`Session changed: ${state.sessionId} -> ${lastSessionId}`);
+        try {
+            await ensureSessionInitialized(client, state, lastSessionId, logger, messages, manualModeDefault);
+        }
+        catch (err) {
+            logger.error("Failed to initialize session state", { error: err.message });
+        }
+    }
+    const lastCompactionTimestamp = findLastCompactionTimestamp(messages);
+    if (lastCompactionTimestamp > state.lastCompaction) {
+        state.lastCompaction = lastCompactionTimestamp;
+        resetOnCompaction(state);
+        logger.info("Detected compaction - reset stale state", {
+            timestamp: lastCompactionTimestamp,
+        });
+        saveSessionState(state, logger).catch((error) => {
+            logger.warn("Failed to persist state reset after compaction", {
+                error: error instanceof Error ? error.message : String(error),
+            });
+        });
+    }
+    state.currentTurn = countTurns(state, messages);
+};
+export function createSessionState() {
+    return {
+        sessionId: null,
+        isSubAgent: false,
+        manualMode: false,
+        compressPermission: undefined,
+        pendingManualTrigger: null,
+        prune: {
+            tools: new Map(),
+            messages: createPruneMessagesState(),
+        },
+        nudges: {
+            contextLimitAnchors: new Set(),
+            turnNudgeAnchors: new Set(),
+            iterationNudgeAnchors: new Set(),
+        },
+        stats: {
+            pruneTokenCounter: 0,
+            totalPruneTokens: 0,
+        },
+        toolParameters: new Map(),
+        subAgentResultCache: new Map(),
+        toolIdList: [],
+        messageIds: {
+            byRawId: new Map(),
+            byRef: new Map(),
+            nextRef: 1,
+        },
+        lastCompaction: 0,
+        currentTurn: 0,
+        variant: undefined,
+        modelContextLimit: undefined,
+        systemPromptTokens: undefined,
+    };
+}
+export function resetSessionState(state) {
+    state.sessionId = null;
+    state.isSubAgent = false;
+    state.manualMode = false;
+    state.compressPermission = undefined;
+    state.pendingManualTrigger = null;
+    state.prune = {
+        tools: new Map(),
+        messages: createPruneMessagesState(),
+    };
+    state.nudges = {
+        contextLimitAnchors: new Set(),
+        turnNudgeAnchors: new Set(),
+        iterationNudgeAnchors: new Set(),
+    };
+    state.stats = {
+        pruneTokenCounter: 0,
+        totalPruneTokens: 0,
+    };
+    state.toolParameters.clear();
+    state.subAgentResultCache.clear();
+    state.toolIdList = [];
+    state.messageIds = {
+        byRawId: new Map(),
+        byRef: new Map(),
+        nextRef: 1,
+    };
+    state.lastCompaction = 0;
+    state.currentTurn = 0;
+    state.variant = undefined;
+    state.modelContextLimit = undefined;
+    state.systemPromptTokens = undefined;
+}
+export async function ensureSessionInitialized(client, state, sessionId, logger, messages, manualModeEnabled) {
+    if (state.sessionId === sessionId) {
+        return;
+    }
+    // logger.info("session ID = " + sessionId)
+    // logger.info("Initializing session state", { sessionId: sessionId })
+    resetSessionState(state);
+    state.manualMode = manualModeEnabled ? "active" : false;
+    state.sessionId = sessionId;
+    const isSubAgent = await isSubAgentSession(client, sessionId);
+    state.isSubAgent = isSubAgent;
+    // logger.info("isSubAgent = " + isSubAgent)
+    state.lastCompaction = findLastCompactionTimestamp(messages);
+    state.currentTurn = countTurns(state, messages);
+    state.nudges.turnNudgeAnchors = collectTurnNudgeAnchors(messages);
+    const persisted = await loadSessionState(sessionId, logger);
+    if (persisted === null) {
+        return;
+    }
+    state.prune.tools = loadPruneMap(persisted.prune.tools);
+    state.prune.messages = loadPruneMessagesState(persisted.prune.messages);
+    state.nudges.contextLimitAnchors = new Set(persisted.nudges.contextLimitAnchors || []);
+    state.nudges.turnNudgeAnchors = new Set([
+        ...state.nudges.turnNudgeAnchors,
+        ...(persisted.nudges.turnNudgeAnchors || []),
+    ]);
+    state.nudges.iterationNudgeAnchors = new Set(persisted.nudges.iterationNudgeAnchors || []);
+    state.stats = {
+        pruneTokenCounter: persisted.stats?.pruneTokenCounter || 0,
+        totalPruneTokens: persisted.stats?.totalPruneTokens || 0,
+    };
+}
+//# sourceMappingURL=state.js.map
