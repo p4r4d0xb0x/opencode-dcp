@@ -143,7 +143,13 @@ export const injectMessageIds = (
         return
     }
 
-    for (const message of messages) {
+    // Find the last assistant message index to avoid injecting synthetic text
+    // parts into it, which would cause "assistant message prefill" errors
+    // on models that don't support prefill (e.g. claude-opus-4-6).
+    const lastAssistantIndex = findLastAssistantIndex(messages)
+
+    for (let i = 0; i < messages.length; i++) {
+        const message = messages[i]
         if (message.info.role === "user" && isIgnoredUserMessage(message)) {
             continue
         }
@@ -169,6 +175,12 @@ export const injectMessageIds = (
             continue
         }
 
+        // Skip adding synthetic text parts to the last assistant message
+        // to prevent prefill errors on models that don't support it.
+        if (i === lastAssistantIndex) {
+            continue
+        }
+
         const syntheticPart = createSyntheticTextPart(message, tag)
         const firstToolIndex = message.parts.findIndex((p) => p.type === "tool")
         if (firstToolIndex === -1) {
@@ -177,4 +189,17 @@ export const injectMessageIds = (
             message.parts.splice(firstToolIndex, 0, syntheticPart)
         }
     }
+}
+
+/**
+ * Find the index of the last assistant message in the array.
+ * Returns -1 if no assistant message is found.
+ */
+function findLastAssistantIndex(messages: WithParts[]): number {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].info.role === "assistant") {
+            return i
+        }
+    }
+    return -1
 }

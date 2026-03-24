@@ -206,6 +206,11 @@ function applyAnchoredNudge(
         return
     }
 
+    // Find the last assistant message to avoid injecting synthetic text
+    // parts into it, which would cause "assistant message prefill" errors
+    // on models that don't support prefill (e.g. claude-opus-4-6).
+    const lastAssistantId = findLastAssistantId(messages)
+
     for (const anchorMessageId of anchorMessageIds) {
         const messageIndex = messages.findIndex((message) => message.info.id === anchorMessageId)
         if (messageIndex === -1) {
@@ -222,6 +227,12 @@ function applyAnchoredNudge(
             continue
         }
 
+        // Skip adding synthetic text parts to the last assistant message
+        // to prevent prefill errors on models that don't support it.
+        if (message.info.id === lastAssistantId) {
+            continue
+        }
+
         const syntheticPart = createSyntheticTextPart(message, hintText)
         const firstToolIndex = message.parts.findIndex((p) => p.type === "tool")
         if (firstToolIndex === -1) {
@@ -230,6 +241,19 @@ function applyAnchoredNudge(
             message.parts.splice(firstToolIndex, 0, syntheticPart)
         }
     }
+}
+
+/**
+ * Find the ID of the last assistant message in the array.
+ * Returns undefined if no assistant message is found.
+ */
+function findLastAssistantId(messages: WithParts[]): string | undefined {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].info.role === "assistant") {
+            return messages[i].info.id
+        }
+    }
+    return undefined
 }
 
 export function applyAnchoredNudges(
