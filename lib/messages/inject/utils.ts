@@ -208,7 +208,11 @@ function buildMessagePriorityGuidance(
     return renderMessagePriorityGuidance(priorityLabel, refs)
 }
 
-function injectAnchoredNudge(message: WithParts, nudgeText: string): void {
+function injectAnchoredNudge(
+    message: WithParts,
+    nudgeText: string,
+    lastAssistantId?: string,
+): void {
     if (!nudgeText.trim()) {
         return
     }
@@ -236,6 +240,13 @@ function injectAnchoredNudge(message: WithParts, nudgeText: string): void {
                 return
             }
         }
+    }
+
+    // Skip inserting a NEW synthetic text part into the final assistant
+    // message: models without prefill support (e.g. claude-opus) reject a
+    // trailing assistant message that gains an injected text part.
+    if (message.info.id === lastAssistantId) {
+        return
     }
 
     const syntheticPart = createSyntheticTextPart(message, nudgeText)
@@ -298,8 +309,10 @@ function applyRangeModeAnchoredNudge(
         return
     }
 
+    const lastAssistantId = messages.findLast((message) => message.info.role === "assistant")?.info.id
+
     for (const { message } of collectAnchoredMessages(anchorMessageIds, messages)) {
-        injectAnchoredNudge(message, nudgeText)
+        injectAnchoredNudge(message, nudgeText, lastAssistantId)
     }
 }
 
@@ -309,6 +322,8 @@ function applyMessageModeAnchoredNudge(
     baseNudgeText: string,
     compressionPriorities?: CompressionPriorityMap,
 ): void {
+    const lastAssistantId = messages.findLast((message) => message.info.role === "assistant")?.info.id
+
     for (const { message, index } of collectAnchoredMessages(anchorMessageIds, messages)) {
         const priorityGuidance = buildMessagePriorityGuidance(
             messages,
@@ -317,7 +332,7 @@ function applyMessageModeAnchoredNudge(
             MESSAGE_MODE_NUDGE_PRIORITY,
         )
         const nudgeText = appendGuidanceToDcpTag(baseNudgeText, priorityGuidance)
-        injectAnchoredNudge(message, nudgeText)
+        injectAnchoredNudge(message, nudgeText, lastAssistantId)
     }
 }
 

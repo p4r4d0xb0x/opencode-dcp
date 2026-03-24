@@ -152,6 +152,8 @@ export const injectMessageIds = (
         return
     }
 
+    const lastAssistantMessage = messages.findLast((message) => message.info.role === "assistant")
+
     for (const message of messages) {
         if (isIgnoredUserMessage(message)) {
             continue
@@ -201,6 +203,13 @@ export const injectMessageIds = (
         }
 
         if (appendToLastTextPart(message, tag)) {
+            continue
+        }
+
+        // Skip inserting a NEW synthetic text part into the final assistant
+        // message: models without prefill support (e.g. claude-opus) reject a
+        // trailing assistant message that gains an injected text part.
+        if (message === lastAssistantMessage) {
             continue
         }
 
