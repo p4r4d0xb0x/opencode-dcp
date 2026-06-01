@@ -654,6 +654,67 @@ test("range-mode nudges skip assistant messages with only empty text parts (issu
     assert.equal((messages[1]?.parts[0] as any).text, "")
 })
 
+test("range-mode nudges skip the final assistant message to avoid prefill", () => {
+    const sessionID = "ses_range_nudge_last_assistant"
+    // Both assistants have content (a completed tool part) but no text part to
+    // append to, so the nudge path reaches synthetic text-part creation. Only
+    // the LAST assistant must be skipped: models without prefill support (e.g.
+    // claude-opus) reject a trailing assistant that gains an injected text part.
+    const earlierAssistant: WithParts = {
+        info: {
+            id: "msg-assistant-earlier",
+            role: "assistant",
+            sessionID,
+            agent: "assistant",
+            time: { created: 2 },
+        } as WithParts["info"],
+        parts: [toolPart("msg-assistant-earlier", sessionID, "call-earlier", "bash", "output A")],
+    }
+    const lastAssistant: WithParts = {
+        info: {
+            id: "msg-assistant-last",
+            role: "assistant",
+            sessionID,
+            agent: "assistant",
+            time: { created: 4 },
+        } as WithParts["info"],
+        parts: [toolPart("msg-assistant-last", sessionID, "call-last", "bash", "output B")],
+    }
+    const messages: WithParts[] = [
+        buildMessage("msg-user-1", "user", sessionID, "Hello", 1),
+        earlierAssistant,
+        buildMessage("msg-user-2", "user", sessionID, "continue", 3),
+        lastAssistant,
+    ]
+    const state = createSessionState()
+    const config = buildConfig("range")
+
+    assignMessageRefs(state, messages)
+    state.nudges.contextLimitAnchors.add("msg-assistant-earlier")
+    state.nudges.contextLimitAnchors.add("msg-assistant-last")
+
+    applyAnchoredNudges(state, config, messages, {
+        system: "",
+        compressRange: "",
+        compressMessage: "",
+        contextLimitNudge: "context limit nudge",
+        turnNudge: "",
+        iterationNudge: "",
+    })
+
+    // Control: the earlier (non-final) assistant DOES receive a synthetic nudge
+    // text part, proving injection is active for this message shape.
+    assert.equal(earlierAssistant.parts.length, 2, "non-final assistant should gain a nudge part")
+    assert.ok(
+        earlierAssistant.parts.some((part) => part.type === "text"),
+        "non-final assistant should have a synthetic text part",
+    )
+
+    // Guard: the final assistant is skipped, keeping only its original tool part.
+    assert.equal(lastAssistant.parts.length, 1, "final assistant must not gain a synthetic part")
+    assert.equal(lastAssistant.parts[0]?.type, "tool")
+})
+
 test("message-mode rendered compressed summaries mark block IDs as BLOCKED", () => {
     const sessionID = "ses_message_blocked_blocks"
     const messages: WithParts[] = [
