@@ -1,7 +1,6 @@
 import { readFile, rm } from "node:fs/promises"
 import { basename, dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import type { PluginInput } from "@opencode-ai/plugin"
 
 type PackageJson = {
     name?: string
@@ -14,9 +13,17 @@ type UpdateResult =
     | { updated: false; error: "remove_failed"; name: string; current: string; latest: string }
     | { updated: false }
 
-const PACKAGE_NAME = "@tarquinen/opencode-dcp"
+export interface UpdateToast {
+    title: string
+    message: string
+    variant: "info"
+    duration: number
+}
 
-export function startAutoUpdate(ctx: PluginInput, enabled: boolean): void {
+/** Package names this plugin may be published under (fork + upstream). */
+const KNOWN_PACKAGE_NAMES = new Set(["@p4r4d0xb0x/opencode-dcp", "@tarquinen/opencode-dcp"])
+
+export function startAutoUpdate(notify: (toast: UpdateToast) => void, enabled: boolean): void {
     if (!enabled) return
 
     const controller = new AbortController()
@@ -25,13 +32,11 @@ export function startAutoUpdate(ctx: PluginInput, enabled: boolean): void {
         .then((result) => {
             if (!result.updated) return
             setTimeout(() => {
-                ctx.client.tui.showToast({
-                    body: {
-                        title: "DCP update ready",
-                        message: `Updated ${result.name} from ${result.current} to ${result.latest}. Restart OpenCode to finish.`,
-                        variant: "info",
-                        duration: 7000,
-                    },
+                notify({
+                    title: "DCP update ready",
+                    message: `Updated ${result.name} from ${result.current} to ${result.latest}. Restart OpenCode to finish (or run: opencode2 plugin update ${result.name}).`,
+                    variant: "info",
+                    duration: 7000,
                 })
             }, 5000)
         })
@@ -40,7 +45,7 @@ export function startAutoUpdate(ctx: PluginInput, enabled: boolean): void {
 }
 
 export async function checkAutoUpdate(signal: AbortSignal): Promise<UpdateResult> {
-    const packageDir = await findPackageDir(PACKAGE_NAME)
+    const packageDir = await findPackageDir()
     if (!packageDir) return { updated: false }
 
     const pkg = await readPackageJson(join(packageDir, "package.json"))
@@ -67,11 +72,11 @@ export async function checkAutoUpdate(signal: AbortSignal): Promise<UpdateResult
     return { updated: true, name: pkg.name, current: pkg.version, latest }
 }
 
-async function findPackageDir(name: string) {
+async function findPackageDir() {
     let dir = dirname(fileURLToPath(import.meta.url))
     for (;;) {
         const pkg = await readPackageJson(join(dir, "package.json"))
-        if (pkg?.name === name) return dir
+        if (pkg?.name && KNOWN_PACKAGE_NAMES.has(pkg.name)) return dir
 
         const parent = dirname(dir)
         if (parent === dir) return undefined
@@ -79,6 +84,16 @@ async function findPackageDir(name: string) {
     }
 }
 
+/**
+ * Resolve the directory OpenCode must lose so that it reinstalls the plugin on
+ * the next start. Supports both cache layouts:
+ *
+ *   OpenCode 1: <cache>/<name>@<spec>/node_modules/<name>            (wrapper = <name>@<spec>)
+ *   OpenCode 2: <cache>/npm/<name>@<spec>/<timestamp>/node_modules/<name>
+ *               (wrapper = <timestamp>, spec lives on its parent directory)
+ *
+ * Returns `undefined` when the install is version-locked or not an npm install.
+ */
 export async function updateRemoveDir(packageDir: string, name: string) {
     const packageParent = dirname(packageDir)
     const nodeModulesDir = basename(packageParent).startsWith("@")
@@ -87,8 +102,19 @@ export async function updateRemoveDir(packageDir: string, name: string) {
     if (basename(nodeModulesDir) !== "node_modules") return undefined
 
     const wrapperDir = dirname(nodeModulesDir)
+    const wrapperSpecValue = wrapperSpec(wrapperDir, name)
+    if (wrapperSpecValue !== undefined) {
+        return isAutoUpdatableSpec(wrapperSpecValue) ? wrapperDir : undefined
+    }
+
+    const specDir = dirname(wrapperDir)
+    const specDirSpec = wrapperSpec(specDir, name)
+    if (specDirSpec !== undefined && /^\d+$/.test(basename(wrapperDir))) {
+        return isAutoUpdatableSpec(specDirSpec) ? specDir : undefined
+    }
+
     const wrapperPkg = await readPackageJson(join(wrapperDir, "package.json"))
-    const spec = wrapperSpec(wrapperDir, name) ?? wrapperPkg?.dependencies?.[name]
+    const spec = wrapperPkg?.dependencies?.[name]
     if (!spec || !isAutoUpdatableSpec(spec)) return undefined
 
     return wrapperDir

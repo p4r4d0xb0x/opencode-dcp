@@ -55,6 +55,39 @@ test("updateRemoveDir skips version-locked opencode installs", async () => {
     assert.equal(await updateRemoveDir(packageDir, "@tarquinen/opencode-dcp"), undefined)
 })
 
+test("updateRemoveDir resolves the OpenCode 2 npm cache layout for latest installs", async () => {
+    // <cache>/npm/@p4r4d0xb0x/opencode-dcp@latest/<timestamp>/node_modules/@p4r4d0xb0x/opencode-dcp
+    const rootDir = await mkdtemp(join(tmpdir(), "dcp-update-v2-"))
+    const specDir = join(rootDir, "npm", "@p4r4d0xb0x", "opencode-dcp@latest")
+    const wrapperDir = join(specDir, "1788427540592")
+    const packageDir = join(wrapperDir, "node_modules", "@p4r4d0xb0x", "opencode-dcp")
+    await writePackageJson(wrapperDir, {
+        dependencies: { "@p4r4d0xb0x/opencode-dcp": "3.1.15" },
+    })
+    await writePackageJson(packageDir, {
+        name: "@p4r4d0xb0x/opencode-dcp",
+        version: "3.1.15",
+    })
+
+    assert.equal(await updateRemoveDir(packageDir, "@p4r4d0xb0x/opencode-dcp"), specDir)
+})
+
+test("updateRemoveDir skips version-locked OpenCode 2 installs", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "dcp-update-v2-"))
+    const specDir = join(rootDir, "npm", "@p4r4d0xb0x", "opencode-dcp@3.1.15")
+    const wrapperDir = join(specDir, "1788427540592")
+    const packageDir = join(wrapperDir, "node_modules", "@p4r4d0xb0x", "opencode-dcp")
+    await writePackageJson(wrapperDir, {
+        dependencies: { "@p4r4d0xb0x/opencode-dcp": "3.1.15" },
+    })
+    await writePackageJson(packageDir, {
+        name: "@p4r4d0xb0x/opencode-dcp",
+        version: "3.1.15",
+    })
+
+    assert.equal(await updateRemoveDir(packageDir, "@p4r4d0xb0x/opencode-dcp"), undefined)
+})
+
 async function writePackageJson(dir: string, data: Record<string, unknown>) {
     await mkdir(dir, { recursive: true })
     await writeFile(join(dir, "package.json"), `${JSON.stringify(data)}\n`, "utf-8")
