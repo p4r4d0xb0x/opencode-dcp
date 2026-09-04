@@ -196,6 +196,20 @@ function packageLooksCommonJs(pkg) {
     if (!pkg) return false
     if (pkg.type === "commonjs") return true
 
+    // Modern dual packages publish conditional `exports` whose `import`
+    // (or `default`) target resolves to ESM, even when `main` still points
+    // at a legacy CJS shim for older toolchains. Treat that as ESM.
+    const exports = pkg.exports
+    if (exports && typeof exports === "object") {
+        const root = "." in exports ? exports["."] : undefined
+        if (root && typeof root === "object") {
+            const target = root.node ?? root.import ?? root.default
+            if (typeof target === "string" && target.endsWith(".js")) return false
+            if (target && typeof target === "object" && typeof target.import === "string" && target.import.endsWith(".js"))
+                return false
+        }
+    }
+
     const main = typeof pkg.main === "string" ? pkg.main : ""
     return /(?:^|\/)(cjs|umd)(?:\/|$)/.test(main) || main.endsWith(".cjs")
 }
