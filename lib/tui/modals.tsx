@@ -4,13 +4,9 @@ import { buildStatsReport } from "../commands/stats"
 import type { PluginConfig } from "../config"
 import { saveManualModeSetting } from "../state/persistence"
 import { loadSessionData, logger } from "./data"
+import { showDialog } from "./dialog"
 import { ContextDialog, PanelDialog, StatsDialog, StatusDialog } from "./dialogs"
 import type { TuiApi } from "./types"
-
-export function showDialog(api: TuiApi, render: () => any) {
-    api.context.ui.dialog.show(render)
-    api.context.ui.dialog.set({ size: "xlarge" })
-}
 
 export function showStatusDialog(api: TuiApi, title: string, eyebrow: string, message: string) {
     showDialog(api, () => (
