@@ -17,11 +17,11 @@
         },
         "./tui": {
             "types": "./dist/tui.d.ts",
-            "import": "./tui.tsx"
+            "import": "./dist/tui.js"
         },
         "./rpc": {
             "types": "./dist/lib/opencode/rpc.d.ts",
-            "import": "./lib/opencode/rpc.ts"
+            "import": "./dist/lib/opencode/rpc.js"
         }
     },
     "scripts": {

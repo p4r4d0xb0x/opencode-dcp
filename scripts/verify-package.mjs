@@ -3,7 +3,7 @@ import { existsSync, readFileSync, statSync } from "node:fs"
 import { execFileSync } from "node:child_process"
 import path from "node:path"
 import process from "node:process"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 const require = createRequire(import.meta.url)
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
@@ -16,7 +16,10 @@ const builtinNames = new Set([
 const requiredRepoFiles = [
     "dist/index.js",
     "dist/index.d.ts",
+    "dist/tui.js",
     "dist/tui.d.ts",
+    "dist/lib/opencode/rpc.js",
+    "dist/lib/opencode/rpc.d.ts",
     "tui.tsx",
     "README.md",
     "LICENSE",
@@ -26,7 +29,10 @@ const requiredTarballFiles = [
     "package.json",
     "dist/index.js",
     "dist/index.d.ts",
+    "dist/tui.js",
     "dist/tui.d.ts",
+    "dist/lib/opencode/rpc.js",
+    "dist/lib/opencode/rpc.d.ts",
     "tui.tsx",
     "README.md",
     "LICENSE",
@@ -75,8 +81,12 @@ function assertPackageJsonShape() {
         fail("expected package.json exports['./server'].import to be './dist/index.js'")
     }
 
-    if (pkg.exports?.["./tui"]?.import !== "./tui.tsx") {
-        fail("expected package.json exports['./tui'].import to be './tui.tsx'")
+    if (pkg.exports?.["./tui"]?.import !== "./dist/tui.js") {
+        fail("expected package.json exports['./tui'].import to be './dist/tui.js'")
+    }
+
+    if (pkg.exports?.["./rpc"]?.import !== "./dist/lib/opencode/rpc.js") {
+        fail("expected package.json exports['./rpc'].import to be './dist/lib/opencode/rpc.js'")
     }
 
     const files = Array.isArray(pkg.files) ? pkg.files : []
@@ -84,6 +94,22 @@ function assertPackageJsonShape() {
         if (!files.includes(entry)) {
             fail(`package.json files must include ${entry}`)
         }
+    }
+}
+
+async function validateBuiltEntrypoints() {
+    const server = await import(pathToFileURL(path.join(root, "dist/index.js")).href)
+    const tui = await import(pathToFileURL(path.join(root, "dist/tui.js")).href)
+    const rpc = await import(pathToFileURL(path.join(root, "dist/lib/opencode/rpc.js")).href)
+
+    if (server.default?.id !== "opencode-dcp" || typeof server.default?.setup !== "function") {
+        fail("dist/index.js does not export the OpenCode 2 server plugin")
+    }
+    if (tui.default?.id !== "opencode-dcp" || typeof tui.default?.setup !== "function") {
+        fail("dist/tui.js does not export the OpenCode 2 TUI plugin")
+    }
+    if (rpc.DcpRpc?.id !== "dcp") {
+        fail("dist/lib/opencode/rpc.js does not export the DCP RPC contract")
     }
 }
 
@@ -242,4 +268,5 @@ function validatePackedFiles() {
 assertRepoFilesExist()
 assertPackageJsonShape()
 validateRuntimeImportGraph()
+await validateBuiltEntrypoints()
 validatePackedFiles()
