@@ -1,137 +1,148 @@
-import type { Plugin } from "@opencode-ai/plugin"
+/**
+ * Dynamic Context Pruning — OpenCode 2 server plugin entry point.
+ *
+ * Wiring only: builds the DCP core (config, state, prompts), the host port,
+ * and registers the V2 hooks/tools/commands. All host-specific logic lives in
+ * `lib/opencode/`; all pruning logic lives in the host-agnostic core.
+ */
+import { Plugin } from "@opencode-ai/plugin"
 import { getConfig } from "./lib/config"
 import { createCompressMessageTool, createCompressRangeTool } from "./lib/compress"
-import {
-    compressDisabledByOpencode,
-    hasExplicitToolPermission,
-    type HostPermissionSnapshot,
-} from "./lib/host-permissions"
-import { Logger } from "./lib/logger"
-import { createSessionState } from "./lib/state"
-import { PromptStore } from "./lib/prompts/store"
+import type { HostPermissionSnapshot } from "./lib/host-permissions"
 import {
     createChatMessageTransformHandler,
     createCommandExecuteHandler,
-    createEventHandler,
     createSystemPromptHandler,
-    createTextCompleteHandler,
 } from "./lib/hooks"
-import { configureClientAuth, isSecureMode } from "./lib/auth"
+import { Logger } from "./lib/logger"
+import {
+    createCompressionTimingTracker,
+    createContextHook,
+    createHostClient,
+    createModelLimitResolver,
+    DcpRpc,
+    registerDcpCommands,
+    registerDcpTool,
+    type ToastPayload,
+} from "./lib/opencode"
+import { PromptStore } from "./lib/prompts/store"
+import { createSessionState } from "./lib/state"
 import { startAutoUpdate } from "./lib/update"
 
-const server: Plugin = (async (ctx) => {
-    const config = getConfig(ctx)
+export const PLUGIN_ID = "opencode-dcp"
 
-    if (!config.enabled) {
-        return {}
+interface Disposable {
+    dispose(): Promise<void>
+}
+
+async function disposeAll(registrations: Disposable[]): Promise<void> {
+    for (const registration of registrations.reverse()) {
+        try {
+            await registration.dispose()
+        } catch {
+            // best effort during unload
+        }
     }
+}
 
-    const logger = new Logger(config.debug)
-    const state = createSessionState()
-    const prompts = new PromptStore(logger, ctx.directory, config.experimental.customPrompts)
-    const hostPermissions: HostPermissionSnapshot = {
-        global: undefined,
-        agents: {},
-    }
+export default Plugin.define({
+    id: PLUGIN_ID,
+    async setup(ctx) {
+        const directory = ctx.location.directory
+        const pendingToasts: ToastPayload[] = []
+        let emitToast: ((toast: ToastPayload) => Promise<void>) | undefined
+        const toast = async (payload: ToastPayload) => {
+            if (!emitToast) {
+                pendingToasts.push(payload)
+                return
+            }
+            try {
+                await emitToast(payload)
+            } catch {
+                // the TUI plugin may not be connected; toasts are best effort
+            }
+        }
 
-    if (isSecureMode()) {
-        configureClientAuth(ctx.client)
-        // logger.info("Secure mode detected, configured client authentication")
-    }
+        const config = getConfig({ directory, notify: (warning) => void toast(warning) })
+        if (!config.enabled) {
+            return
+        }
 
-    logger.info("DCP initialized", {
-        strategies: config.strategies,
-    })
+        const logger = new Logger(config.debug)
+        const state = createSessionState()
+        const prompts = new PromptStore(logger, directory, config.experimental.customPrompts)
+        const hostPermissions: HostPermissionSnapshot = { global: undefined, agents: {} }
+        const client = createHostClient(ctx, toast)
+        const registrations: Disposable[] = []
 
-    startAutoUpdate(ctx, config.autoUpdate)
+        try {
+            const rpc = await ctx.rpc.register(DcpRpc, {})
+            registrations.push(rpc)
+            emitToast = (payload) =>
+                rpc.events.emit("toast", payload as unknown as Record<string, unknown>)
+            for (const queued of pendingToasts.splice(0)) void toast(queued)
 
-    const compressToolContext = {
-        client: ctx.client,
-        state,
-        logger,
-        config,
-        prompts,
-    }
+            logger.info("DCP initialized", { strategies: config.strategies, host: "opencode2" })
+            startAutoUpdate((payload) => void toast(payload), config.autoUpdate)
 
-    return {
-        "experimental.chat.system.transform": createSystemPromptHandler(
-            state,
-            logger,
-            config,
-            prompts,
-        ),
-        "experimental.chat.messages.transform": createChatMessageTransformHandler(
-            ctx.client,
-            state,
-            logger,
-            config,
-            prompts,
-            hostPermissions,
-        ) as any,
-        "experimental.text.complete": createTextCompleteHandler(),
-        "command.execute.before": createCommandExecuteHandler(
-            ctx.client,
-            state,
-            logger,
-            config,
-            ctx.directory,
-            hostPermissions,
-        ),
-        event: createEventHandler(state, logger),
-        tool: {
-            ...(config.compress.permission !== "deny" && {
-                compress:
+            const compressEnabled = config.compress.permission !== "deny"
+            if (compressEnabled) {
+                const definition =
                     config.compress.mode === "message"
-                        ? createCompressMessageTool(compressToolContext)
-                        : createCompressRangeTool(compressToolContext),
-            }),
-        },
-        config: async (opencodeConfig) => {
-            if (
-                config.compress.permission !== "deny" &&
-                compressDisabledByOpencode(opencodeConfig.permission)
-            ) {
-                config.compress.permission = "deny"
+                        ? createCompressMessageTool({ client, state, logger, config, prompts })
+                        : createCompressRangeTool({ client, state, logger, config, prompts })
+                registrations.push(await registerDcpTool(ctx, definition, logger))
             }
 
-            if (config.commands.enabled && config.compress.permission !== "deny") {
-                opencodeConfig.command ??= {}
-                opencodeConfig.command["dcp-compress"] = {
-                    template: "",
-                    description: "Trigger DCP manual compression with: /dcp-compress [focus]",
-                }
+            if (config.commands.enabled) {
+                registrations.push(
+                    await registerDcpCommands(
+                        ctx,
+                        createCommandExecuteHandler(
+                            client,
+                            state,
+                            logger,
+                            config,
+                            directory,
+                            hostPermissions,
+                        ),
+                        logger,
+                        { compressEnabled },
+                    ),
+                )
             }
 
-            const toolsToAdd: string[] = []
-            if (config.compress.permission !== "deny" && !config.experimental.allowSubAgents) {
-                toolsToAdd.push("compress")
-            }
+            const timing = createCompressionTimingTracker(state, logger)
+            registrations.push(...(await timing.register(ctx)))
 
-            if (toolsToAdd.length > 0) {
-                const existingPrimaryTools = opencodeConfig.experimental?.primary_tools ?? []
-                opencodeConfig.experimental = {
-                    ...opencodeConfig.experimental,
-                    primary_tools: [...existingPrimaryTools, ...toolsToAdd],
-                }
-            }
-
-            if (!hasExplicitToolPermission(opencodeConfig.permission, "compress")) {
-                const permission = opencodeConfig.permission ?? {}
-                opencodeConfig.permission = {
-                    ...permission,
-                    compress: config.compress.permission,
-                } as typeof permission
-            }
-
-            hostPermissions.global = opencodeConfig.permission
-            hostPermissions.agents = Object.fromEntries(
-                Object.entries(opencodeConfig.agent ?? {}).map(([name, agent]) => [
-                    name,
-                    agent?.permission,
-                ]),
+            registrations.push(
+                await ctx.session.hook(
+                    "context",
+                    createContextHook({
+                        ctx,
+                        state,
+                        config,
+                        logger,
+                        hostPermissions,
+                        timing,
+                        modelLimits: createModelLimitResolver(ctx, logger),
+                        systemHandler: createSystemPromptHandler(state, logger, config, prompts),
+                        messagesHandler: createChatMessageTransformHandler(
+                            client,
+                            state,
+                            logger,
+                            config,
+                            prompts,
+                            hostPermissions,
+                        ),
+                    }),
+                ),
             )
-        },
-    }
-}) satisfies Plugin
+        } catch (error) {
+            await disposeAll(registrations)
+            throw error
+        }
 
-export default server
+        return () => disposeAll(registrations)
+    },
+})

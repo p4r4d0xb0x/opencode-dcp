@@ -3,7 +3,7 @@
     "name": "@p4r4d0xb0x/opencode-dcp",
     "version": "3.1.15",
     "type": "module",
-    "description": "OpenCode plugin that optimizes token usage by pruning obsolete tool outputs from conversation context",
+    "description": "OpenCode 2 plugin that optimizes token usage by pruning obsolete tool outputs from conversation context",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "exports": {
@@ -18,6 +18,10 @@
         "./tui": {
             "types": "./dist/tui.d.ts",
             "import": "./tui.tsx"
+        },
+        "./rpc": {
+            "types": "./dist/lib/opencode/rpc.d.ts",
+            "import": "./lib/opencode/rpc.ts"
         }
     },
     "scripts": {
@@ -26,7 +30,7 @@
         "verify:package": "node scripts/verify-package.mjs",
         "check:package": "npm run build && npm run verify:package",
         "prepublishOnly": "npm run check:package",
-        "dev": "opencode plugin dev",
+        "dev": "opencode2 plugin dev",
         "typecheck": "tsc --noEmit",
         "test": "node --import tsx --test tests/*.test.ts",
         "format": "prettier --write .",
@@ -35,6 +39,7 @@
     },
     "keywords": [
         "opencode",
+        "opencode2",
         "opencode-plugin",
         "plugin",
         "context",
@@ -44,29 +49,32 @@
     ],
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/Opencode-DCP/opencode-dynamic-context-pruning.git"
+        "url": "git+https://github.com/p4r4d0xb0x/opencode-dcp.git"
     },
     "bugs": {
-        "url": "https://github.com/Opencode-DCP/opencode-dynamic-context-pruning/issues"
+        "url": "https://github.com/p4r4d0xb0x/opencode-dcp/issues"
     },
-    "homepage": "https://github.com/Opencode-DCP/opencode-dynamic-context-pruning#readme",
+    "homepage": "https://github.com/p4r4d0xb0x/opencode-dcp#readme",
     "author": "tarquinen",
     "license": "AGPL-3.0-or-later",
     "peerDependencies": {
-        "@opencode-ai/plugin": ">=1.4.3"
+        "@opencode-ai/plugin": "0.0.0-beta-18992",
+        "@opentui/core": ">=0.5.10",
+        "@opentui/solid": ">=0.5.10",
+        "solid-js": ">=1.9.0"
     },
     "dependencies": {
         "@anthropic-ai/tokenizer": "^0.0.4",
-        "@opencode-ai/sdk": "^1.4.3",
-        "@opentui/core": "^0.4.5",
-        "@opentui/solid": "^0.4.5",
-        "jsonc-parser": "^3.3.1",
-        "solid-js": "^1.9.12"
+        "jsonc-parser": "^3.3.1"
     },
     "devDependencies": {
-        "@opencode-ai/plugin": "^1.4.3",
+        "@opencode-ai/plugin": "0.0.0-beta-18992",
+        "@opencode-ai/theme": "0.0.0-beta-18992",
+        "@opentui/core": "^0.5.10",
+        "@opentui/solid": "^0.5.10",
         "@types/node": "^25.5.0",
         "prettier": "^3.8.1",
+        "solid-js": "^1.9.12",
         "tsup": "^8.5.1",
         "tsx": "^4.21.0",
         "typescript": "^6.0.2"
@@ -81,5 +89,16 @@
         "tui.tsx",
         "README.md",
         "LICENSE"
-    ]
+    ],
+    "peerDependenciesMeta": {
+        "@opentui/core": {
+            "optional": true
+        },
+        "@opentui/solid": {
+            "optional": true
+        },
+        "solid-js": {
+            "optional": true
+        }
+    }
 }

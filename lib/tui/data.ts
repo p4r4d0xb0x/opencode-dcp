@@ -1,6 +1,7 @@
 import { getConfig, type PluginConfig } from "../config"
 import { Logger } from "../logger"
-import { filterMessages } from "../messages/shape"
+import type { HostSessionMessage } from "../opencode/host-types"
+import { convertSessionMessages } from "../opencode/session-to-parts"
 import { createSessionState, type SessionState, type WithParts } from "../state"
 import { loadSessionState } from "../state/persistence"
 import { findLastCompactionTimestamp, loadPruneMap, loadPruneMessagesState } from "../state/utils"
@@ -9,28 +10,30 @@ import type { TuiApi } from "./types"
 export const logger = new Logger(false)
 
 export function loadConfig(api: TuiApi): PluginConfig {
+    const location = api.context.location ?? api.context.data.location.default()
     return getConfig({
-        client: api.client,
-        directory: api.state.path.directory,
-        worktree: api.state.path.worktree,
-    } as any)
+        directory: location?.directory,
+        notify: (warning) =>
+            api.context.ui.toast.show({
+                title: warning.title,
+                message: warning.message,
+                variant: warning.variant,
+                duration: warning.duration,
+            }),
+    })
 }
 
 export function activeSessionID(api: TuiApi): string | undefined {
-    const current = api.route.current
-    if (current.name !== "session") return undefined
-    const sessionID = current.params?.sessionID
-    return typeof sessionID === "string" ? sessionID : undefined
+    const current = api.context.ui.router.current()
+    return current.type === "session" ? current.sessionID : undefined
 }
 
-export function sessionMessages(api: TuiApi, sessionID: string): WithParts[] {
-    const messages = api.state.session.messages(sessionID)
-    return filterMessages(
-        messages.map((info) => ({
-            info,
-            parts: api.state.part(info.id),
-        })) as unknown as WithParts[],
-    )
+export async function sessionMessages(api: TuiApi, sessionID: string): Promise<WithParts[]> {
+    await api.context.data.session.message.sync(sessionID)
+    const messages = api.context.data.session.message.list(
+        sessionID,
+    ) as unknown as HostSessionMessage[]
+    return convertSessionMessages(messages, { sessionID })
 }
 
 export async function buildSessionState(
@@ -67,7 +70,7 @@ export async function loadSessionData(api: TuiApi, config: PluginConfig) {
     const sessionID = activeSessionID(api)
     if (!sessionID) return undefined
 
-    const messages = sessionMessages(api, sessionID)
+    const messages = await sessionMessages(api, sessionID)
     const state = await buildSessionState(sessionID, messages, config)
     return { state, messages }
 }

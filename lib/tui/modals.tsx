@@ -8,8 +8,8 @@ import { ContextDialog, PanelDialog, StatsDialog, StatusDialog } from "./dialogs
 import type { TuiApi } from "./types"
 
 export function showDialog(api: TuiApi, render: () => any) {
-    api.ui.dialog.setSize("xlarge")
-    api.ui.dialog.replace(render)
+    api.context.ui.dialog.show(render)
+    api.context.ui.dialog.set({ size: "xlarge" })
 }
 
 export function showStatusDialog(api: TuiApi, title: string, eyebrow: string, message: string) {
