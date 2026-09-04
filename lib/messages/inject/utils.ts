@@ -6,7 +6,7 @@ import {
     renderMessagePriorityGuidance,
 } from "../../prompts/extensions/nudge"
 import type { RuntimePrompts } from "../../prompts/store"
-import type { UserMessage } from "@opencode-ai/sdk/v2"
+import type { UserMessage } from "../../session-types"
 import {
     type CompressionPriorityMap,
     type MessagePriority,
@@ -309,7 +309,8 @@ function applyRangeModeAnchoredNudge(
         return
     }
 
-    const lastAssistantId = messages.findLast((message) => message.info.role === "assistant")?.info.id
+    const lastAssistantId = messages.findLast((message) => message.info.role === "assistant")?.info
+        .id
 
     for (const { message } of collectAnchoredMessages(anchorMessageIds, messages)) {
         injectAnchoredNudge(message, nudgeText, lastAssistantId)
@@ -322,7 +323,8 @@ function applyMessageModeAnchoredNudge(
     baseNudgeText: string,
     compressionPriorities?: CompressionPriorityMap,
 ): void {
-    const lastAssistantId = messages.findLast((message) => message.info.role === "assistant")?.info.id
+    const lastAssistantId = messages.findLast((message) => message.info.role === "assistant")?.info
+        .id
 
     for (const { message, index } of collectAnchoredMessages(anchorMessageIds, messages)) {
         const priorityGuidance = buildMessagePriorityGuidance(

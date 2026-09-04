@@ -4,7 +4,7 @@ import type { PluginConfig } from "../config"
 import { isMessageCompacted } from "../state/utils"
 import { createSyntheticUserMessage, replaceBlockIdsWithBlocked } from "./utils"
 import { getLastUserMessage } from "./query"
-import type { UserMessage } from "@opencode-ai/sdk/v2"
+import type { UserMessage } from "../session-types"
 
 const PRUNED_TOOL_OUTPUT_REPLACEMENT =
     "[Output removed to save context - information superseded or no longer needed]"
