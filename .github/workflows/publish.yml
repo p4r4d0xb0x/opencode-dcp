@@ -21,10 +21,10 @@ jobs:
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@v7
 
             - name: Setup Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v7
               with:
                   node-version: "22.x"
                   cache: npm
@@ -64,4 +64,7 @@ jobs:
 
             - name: Publish
               if: steps.package.outputs.published == 'false'
-              run: npx --yes --package npm@11 npm publish --access public --provenance
+              env:
+                  PACKAGE_NAME: ${{ steps.package.outputs.name }}
+                  PACKAGE_VERSION: ${{ steps.package.outputs.version }}
+              run: node scripts/publish-if-needed.mjs
