@@ -13,9 +13,8 @@ ANALYSIS.md
 docs/
 notes/
 
-# Source files (since we're shipping dist/)
+# Server source file (server runtime ships dist/)
 index.ts
-lib/
 
 # Git
 .git/

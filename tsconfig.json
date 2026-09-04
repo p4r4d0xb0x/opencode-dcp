@@ -17,8 +17,10 @@
         "declaration": true,
         "declarationMap": true,
         "sourceMap": true,
+        "jsx": "react-jsx",
+        "jsxImportSource": "@opentui/solid",
         "types": ["node"]
     },
-    "include": ["index.ts", "lib/**/*"],
+    "include": ["index.ts", "tui.tsx", "lib/**/*"],
     "exclude": ["node_modules", "dist", "logs"]
 }

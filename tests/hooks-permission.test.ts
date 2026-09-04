@@ -12,6 +12,8 @@ import { Logger } from "../lib/logger"
 import {
     createSessionState,
     ensureSessionInitialized,
+    refreshManualMode,
+    saveManualModeSetting,
     saveSessionState,
     type WithParts,
 } from "../lib/state"
@@ -110,6 +112,69 @@ test("system prompt handler caches full model context for percentage thresholds"
     )
 
     assert.equal(state.modelContextLimit, 200000)
+})
+
+function buildPromptStore() {
+    return {
+        reload() {},
+        getRuntimePrompts() {
+            return {
+                system: "DCP-RUNTIME-PROMPT",
+                manualExtension: "",
+                subagentExtension: "",
+            }
+        },
+    } as any
+}
+
+test("system prompt handler injects nudges for main session with bundled internal prompts", async () => {
+    const state = createSessionState()
+    const handler = createSystemPromptHandler(
+        state,
+        new Logger(false),
+        buildConfig("allow"),
+        buildPromptStore(),
+    )
+    const output = {
+        system: [
+            "You are the primary coding assistant for this repository.",
+            "You are a title generator for short session names.",
+        ],
+    }
+
+    await handler(
+        {
+            sessionID: "session-1",
+            model: { limit: { context: 200000 } },
+        } as any,
+        output,
+    )
+
+    assert.match(output.system[output.system.length - 1], /DCP-RUNTIME-PROMPT/)
+})
+
+test("system prompt handler skips injection for internal agent calls", async () => {
+    const state = createSessionState()
+    const handler = createSystemPromptHandler(
+        state,
+        new Logger(false),
+        buildConfig("allow"),
+        buildPromptStore(),
+    )
+    const output = {
+        system: ["You are a title generator. Return only a short title."],
+    }
+
+    await handler(
+        {
+            sessionID: "session-1",
+            model: { limit: { context: 200000 } },
+        } as any,
+        output,
+    )
+
+    assert.equal(output.system.length, 1)
+    assert.doesNotMatch(output.system[0], /DCP-RUNTIME-PROMPT/)
 })
 
 test("chat message transform strips hallucinated tags even when compress is denied", async () => {
@@ -723,4 +788,22 @@ test("event hook keeps same call id distinct across message ids", async () => {
 
     assert.equal(state.prune.messages.blocksById.get(1)?.durationMs, 350)
     assert.equal(state.prune.messages.blocksById.get(2)?.durationMs, 150)
+})
+
+test("manual mode persisted setting refreshes server session state", async () => {
+    const logger = new Logger(false)
+    const sessionId = `manual-mode-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    await saveManualModeSetting(sessionId, true, logger)
+
+    const state = createSessionState()
+    state.sessionId = sessionId
+    state.manualMode = false
+
+    await refreshManualMode(state, sessionId, logger, false)
+    assert.equal(state.manualMode, "active")
+
+    await saveManualModeSetting(sessionId, false, logger)
+    await refreshManualMode(state, sessionId, logger, true)
+    assert.equal(state.manualMode, false)
 })

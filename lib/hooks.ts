@@ -46,6 +46,15 @@ const INTERNAL_AGENT_SIGNATURES = [
     "Summarize what was done in this conversation",
 ]
 
+function isInternalAgentCall(systemPrompts: string[]): boolean {
+    const primaryPrompt = systemPrompts[0]
+    if (typeof primaryPrompt !== "string" || primaryPrompt.length === 0) {
+        return false
+    }
+
+    return INTERNAL_AGENT_SIGNATURES.some((signature) => primaryPrompt.includes(signature))
+}
+
 export function createSystemPromptHandler(
     state: SessionState,
     logger: Logger,
@@ -65,8 +74,7 @@ export function createSystemPromptHandler(
             return
         }
 
-        const systemText = output.system.join("\n")
-        if (INTERNAL_AGENT_SIGNATURES.some((sig) => systemText.includes(sig))) {
+        if (isInternalAgentCall(output.system)) {
             logger.info("Skipping DCP system prompt injection for internal agent")
             return
         }
@@ -172,7 +180,7 @@ export function createCommandExecuteHandler(
             return
         }
 
-        if (input.command === "dcp") {
+        if (input.command === "dcp" || input.command === "dcp-compress") {
             const messagesResponse = await client.session.messages({
                 path: { id: input.sessionID },
             })
@@ -195,8 +203,9 @@ export function createCommandExecuteHandler(
             }
 
             const args = (input.arguments || "").trim().split(/\s+/).filter(Boolean)
-            const subcommand = args[0]?.toLowerCase() || ""
-            const subArgs = args.slice(1)
+            const isCompressCommand = input.command === "dcp-compress"
+            const subcommand = isCompressCommand ? "compress" : args[0]?.toLowerCase() || ""
+            const subArgs = isCompressCommand ? args : args.slice(1)
 
             const commandCtx = {
                 client,
@@ -209,12 +218,12 @@ export function createCommandExecuteHandler(
 
             if (subcommand === "context") {
                 await handleContextCommand(commandCtx)
-                throw new Error("__DCP_CONTEXT_HANDLED__")
+                return
             }
 
             if (subcommand === "stats") {
                 await handleStatsCommand(commandCtx)
-                throw new Error("__DCP_STATS_HANDLED__")
+                return
             }
 
             if (subcommand === "sweep") {
@@ -223,12 +232,12 @@ export function createCommandExecuteHandler(
                     args: subArgs,
                     workingDirectory,
                 })
-                throw new Error("__DCP_SWEEP_HANDLED__")
+                return
             }
 
             if (subcommand === "manual") {
                 await handleManualToggleCommand(commandCtx, subArgs[0]?.toLowerCase())
-                throw new Error("__DCP_MANUAL_HANDLED__")
+                return
             }
 
             if (subcommand === "compress") {
@@ -247,7 +256,13 @@ export function createCommandExecuteHandler(
                 output.parts.length = 0
                 output.parts.push({
                     type: "text",
-                    text: rawArgs ? `/dcp ${rawArgs}` : `/dcp ${subcommand}`,
+                    text: isCompressCommand
+                        ? rawArgs
+                            ? `/dcp-compress ${rawArgs}`
+                            : "/dcp-compress"
+                        : rawArgs
+                          ? `/dcp ${rawArgs}`
+                          : `/dcp ${subcommand}`,
                 })
                 return
             }
@@ -257,7 +272,7 @@ export function createCommandExecuteHandler(
                     ...commandCtx,
                     args: subArgs,
                 })
-                throw new Error("__DCP_DECOMPRESS_HANDLED__")
+                return
             }
 
             if (subcommand === "recompress") {
@@ -265,11 +280,11 @@ export function createCommandExecuteHandler(
                     ...commandCtx,
                     args: subArgs,
                 })
-                throw new Error("__DCP_RECOMPRESS_HANDLED__")
+                return
             }
 
             await handleHelpCommand(commandCtx)
-            throw new Error("__DCP_HELP_HANDLED__")
+            return
         }
     }
 }

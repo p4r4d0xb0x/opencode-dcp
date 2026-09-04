@@ -13,19 +13,27 @@ const builtinNames = new Set([
     ...builtinModules.map((name) => name.replace(/^node:/, "")),
 ])
 
-const requiredRepoFiles = ["dist/index.js", "dist/index.d.ts", "README.md", "LICENSE"]
+const requiredRepoFiles = [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/tui.d.ts",
+    "tui.tsx",
+    "README.md",
+    "LICENSE",
+]
 
 const requiredTarballFiles = [
     "package.json",
     "dist/index.js",
     "dist/index.d.ts",
+    "dist/tui.d.ts",
+    "tui.tsx",
     "README.md",
     "LICENSE",
 ]
 
 const forbiddenTarballPatterns = [
     /^node_modules\//,
-    /^lib\//,
     /^index\.ts$/,
     /^tests\//,
     /^scripts\//,
@@ -67,8 +75,12 @@ function assertPackageJsonShape() {
         fail("expected package.json exports['./server'].import to be './dist/index.js'")
     }
 
+    if (pkg.exports?.["./tui"]?.import !== "./tui.tsx") {
+        fail("expected package.json exports['./tui'].import to be './tui.tsx'")
+    }
+
     const files = Array.isArray(pkg.files) ? pkg.files : []
-    for (const entry of ["dist/", "README.md", "LICENSE"]) {
+    for (const entry of ["dist/", "lib/", "tui.tsx", "README.md", "LICENSE"]) {
         if (!files.includes(entry)) {
             fail(`package.json files must include ${entry}`)
         }
@@ -163,7 +175,7 @@ function packageLooksCommonJs(pkg) {
 }
 
 function validateRuntimeImportGraph() {
-    const pending = [path.join(root, "index.ts")]
+    const pending = [path.join(root, "index.ts"), path.join(root, "tui.tsx")]
     const seen = new Set()
 
     while (pending.length > 0) {

@@ -4,18 +4,19 @@
  *
  * Usage:
  *   /dcp manual [on|off]  - Toggle manual mode or set explicit state
- *   /dcp compress [focus]  - Trigger manual compress execution
+ *   /dcp-compress [focus]  - Trigger manual compress execution
  */
 
 import type { Logger } from "../logger"
 import type { SessionState, WithParts } from "../state"
 import type { PluginConfig } from "../config"
 import { sendIgnoredMessage } from "../ui/notification"
+import { saveManualModeSetting } from "../state/persistence"
 import { getCurrentParams } from "../token-utils"
 import { buildCompressedBlockGuidance } from "../prompts/extensions/nudge"
 import { isIgnoredUserMessage } from "../messages/query"
 
-const MANUAL_MODE_ON = "Manual mode is now ON. Use /dcp compress to trigger context tools manually."
+const MANUAL_MODE_ON = "Manual mode is now ON. Use /dcp-compress to trigger context tools manually."
 
 const MANUAL_MODE_OFF = "Manual mode is now OFF."
 
@@ -76,6 +77,7 @@ export async function handleManualToggleCommand(
         params,
         logger,
     )
+    await saveManualModeSetting(sessionId, !!state.manualMode, logger)
 
     logger.info("Manual mode toggled", { manualMode: state.manualMode })
 }

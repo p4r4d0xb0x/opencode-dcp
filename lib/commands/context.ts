@@ -70,7 +70,7 @@ interface TokenBreakdown {
     total: number
 }
 
-function analyzeTokens(state: SessionState, messages: WithParts[]): TokenBreakdown {
+export function analyzeContextTokens(state: SessionState, messages: WithParts[]): TokenBreakdown {
     const breakdown: TokenBreakdown = {
         system: 0,
         user: 0,
@@ -235,7 +235,7 @@ function createBar(value: number, maxValue: number, width: number, char: string 
     return bar
 }
 
-function formatContextMessage(breakdown: TokenBreakdown): string {
+export function formatContextMessage(breakdown: TokenBreakdown): string {
     const lines: string[] = []
     const barWidth = 30
 
@@ -296,7 +296,7 @@ function formatContextMessage(breakdown: TokenBreakdown): string {
 export async function handleContextCommand(ctx: ContextCommandContext): Promise<void> {
     const { client, state, logger, sessionId, messages } = ctx
 
-    const breakdown = analyzeTokens(state, messages)
+    const breakdown = analyzeContextTokens(state, messages)
 
     const message = formatContextMessage(breakdown)
 

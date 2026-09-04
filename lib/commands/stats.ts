@@ -19,7 +19,7 @@ export interface StatsCommandContext {
     messages: WithParts[]
 }
 
-function formatStatsMessage(
+export function formatStatsMessage(
     sessionTokens: number,
     sessionSummaryTokens: number,
     sessionTools: number,
@@ -92,7 +92,32 @@ function formatCompressionTime(ms: number): string {
 export async function handleStatsCommand(ctx: StatsCommandContext): Promise<void> {
     const { client, state, logger, sessionId, messages } = ctx
 
-    // Session stats from in-memory state
+    const report = await buildStatsReport(state, logger)
+    const message = formatStatsMessage(
+        report.sessionTokens,
+        report.sessionSummaryTokens,
+        report.sessionTools,
+        report.sessionMessages,
+        report.sessionDurationMs,
+        report.allTime,
+    )
+
+    const params = getCurrentParams(state, messages, logger)
+    await sendIgnoredMessage(client, sessionId, message, params, logger)
+
+    logger.info("Stats command executed", {
+        sessionTokens: report.sessionTokens,
+        sessionSummaryTokens: report.sessionSummaryTokens,
+        sessionTools: report.sessionTools,
+        sessionMessages: report.sessionMessages,
+        sessionDurationMs: report.sessionDurationMs,
+        allTimeTokens: report.allTime.totalTokens,
+        allTimeTools: report.allTime.totalTools,
+        allTimeMessages: report.allTime.totalMessages,
+    })
+}
+
+export async function buildStatsReport(state: SessionState, logger: Logger) {
     const sessionTokens = state.stats.totalPruneTokens
     const sessionSummaryTokens = Array.from(state.prune.messages.blocksById.values()).reduce(
         (total, block) => (block.active ? total + block.summaryTokens : total),
@@ -123,26 +148,12 @@ export async function handleStatsCommand(ctx: StatsCommandContext): Promise<void
     // All-time stats from storage files
     const allTime = await loadAllSessionStats(logger)
 
-    const message = formatStatsMessage(
+    return {
         sessionTokens,
         sessionSummaryTokens,
         sessionTools,
         sessionMessages,
         sessionDurationMs,
         allTime,
-    )
-
-    const params = getCurrentParams(state, messages, logger)
-    await sendIgnoredMessage(client, sessionId, message, params, logger)
-
-    logger.info("Stats command executed", {
-        sessionTokens,
-        sessionSummaryTokens,
-        sessionTools,
-        sessionMessages,
-        sessionDurationMs,
-        allTimeTokens: allTime.totalTokens,
-        allTimeTools: allTime.totalTools,
-        allTimeMessages: allTime.totalMessages,
-    })
+    }
 }
