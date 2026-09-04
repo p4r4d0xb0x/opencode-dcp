@@ -6,21 +6,12 @@ import { isIgnoredUserMessage } from "../messages/query"
 import { deduplicate, purgeErrors } from "../strategies"
 import { getCurrentParams, getCurrentTokenUsage } from "../token-utils"
 import { sendCompressNotification } from "../ui/notification"
-import type { ToolContext } from "./types"
+import type { ToolContext, ToolRunContext } from "./types"
 import { buildSearchContext, fetchSessionMessages } from "./search"
 import type { SearchContext } from "./types"
 import { applyPendingCompressionDurations } from "./timing"
 
-interface RunContext {
-    ask(input: {
-        permission: string
-        patterns: string[]
-        always: string[]
-        metadata: Record<string, unknown>
-    }): Promise<void>
-    metadata(input: { title: string }): void
-    sessionID: string
-}
+type RunContext = Pick<ToolRunContext, "ask" | "metadata" | "sessionID">
 
 export interface NotificationEntry {
     blockId: number
