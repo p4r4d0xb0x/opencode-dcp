@@ -205,7 +205,12 @@ function packageLooksCommonJs(pkg) {
         if (root && typeof root === "object") {
             const target = root.node ?? root.import ?? root.default
             if (typeof target === "string" && target.endsWith(".js")) return false
-            if (target && typeof target === "object" && typeof target.import === "string" && target.import.endsWith(".js"))
+            if (
+                target &&
+                typeof target === "object" &&
+                typeof target.import === "string" &&
+                target.import.endsWith(".js")
+            )
                 return false
         }
     }
