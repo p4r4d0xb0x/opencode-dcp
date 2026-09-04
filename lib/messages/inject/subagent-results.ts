@@ -4,6 +4,7 @@ import { filterMessages } from "../shape"
 import {
     buildSubagentResultText,
     getSubAgentId,
+    isSubAgentTool,
     mergeSubagentResult,
 } from "../../subagents/subagent-results"
 import { stripHallucinationsFromString } from "../utils"
@@ -31,7 +32,7 @@ export const injectExtendedSubAgentResults = async (
         const parts = Array.isArray(message.parts) ? message.parts : []
 
         for (const part of parts) {
-            if (part.type !== "tool" || part.tool !== "task" || !part.callID) {
+            if (part.type !== "tool" || !isSubAgentTool(part.tool) || !part.callID) {
                 continue
             }
             if (state.prune.tools.has(part.callID)) {

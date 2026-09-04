@@ -2,7 +2,23 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from "fs
 import { join, dirname } from "path"
 import { homedir } from "os"
 import { parse } from "jsonc-parser/lib/esm/main.js"
-import type { PluginInput } from "@opencode-ai/plugin"
+
+/** Toast payload surfaced to the host UI for configuration problems. */
+export interface ConfigWarning {
+    title: string
+    message: string
+    variant: "warning"
+    duration: number
+}
+
+/**
+ * Minimal host surface needed to load DCP configuration.
+ * `directory` locates project-level config; `notify` reports problems.
+ */
+export interface ConfigHost {
+    directory?: string
+    notify?: (warning: ConfigWarning) => void
+}
 
 type Permission = "ask" | "allow" | "deny"
 type CompressMode = "range" | "message"
@@ -77,6 +93,7 @@ type CompressOverride = Partial<CompressConfig>
 
 const DEFAULT_PROTECTED_TOOLS = [
     "task",
+    "subagent",
     "skill",
     "todowrite",
     "todoread",
@@ -88,7 +105,7 @@ const DEFAULT_PROTECTED_TOOLS = [
     "edit",
 ]
 
-const COMPRESS_DEFAULT_PROTECTED_TOOLS = ["task", "skill", "todowrite", "todoread"]
+const COMPRESS_DEFAULT_PROTECTED_TOOLS = ["task", "subagent", "skill", "todowrite", "todoread"]
 
 export const VALID_CONFIG_KEYS = new Set([
     "$schema",
@@ -609,7 +626,7 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
 }
 
 function showConfigWarnings(
-    ctx: PluginInput,
+    ctx: ConfigHost,
     configPath: string,
     configData: Record<string, any>,
     isProject: boolean,
@@ -641,13 +658,11 @@ function showConfigWarnings(
 
     setTimeout(() => {
         try {
-            ctx.client.tui.showToast({
-                body: {
-                    title: `DCP: ${configType} warning`,
-                    message: `${configPath}\n${messages.join("\n")}`,
-                    variant: "warning",
-                    duration: 7000,
-                },
+            ctx.notify?.({
+                title: `DCP: ${configType} warning`,
+                message: `${configPath}\n${messages.join("\n")}`,
+                variant: "warning",
+                duration: 7000,
             })
         } catch {}
     }, 7000)
@@ -725,7 +740,7 @@ function findOpencodeDir(startDir: string): string | null {
     return null
 }
 
-function getConfigPaths(ctx?: PluginInput): {
+function getConfigPaths(ctx?: ConfigHost): {
     global: string | null
     configDir: string | null
     project: string | null
@@ -951,22 +966,20 @@ function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConf
     }
 }
 
-function scheduleParseWarning(ctx: PluginInput, title: string, message: string): void {
+function scheduleParseWarning(ctx: ConfigHost, title: string, message: string): void {
     setTimeout(() => {
         try {
-            ctx.client.tui.showToast({
-                body: {
-                    title,
-                    message,
-                    variant: "warning",
-                    duration: 7000,
-                },
+            ctx.notify?.({
+                title,
+                message,
+                variant: "warning",
+                duration: 7000,
             })
         } catch {}
     }, 7000)
 }
 
-export function getConfig(ctx: PluginInput): PluginConfig {
+export function getConfig(ctx: ConfigHost): PluginConfig {
     let config = deepCloneConfig(defaultConfig)
     const configPaths = getConfigPaths(ctx)
 

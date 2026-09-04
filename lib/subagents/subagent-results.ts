@@ -2,8 +2,16 @@ import type { WithParts } from "../state"
 
 const SUB_AGENT_RESULT_BLOCK_REGEX = /(<task_result>\s*)([\s\S]*?)(\s*<\/task_result>)/i
 
+/** Tool names that launch a subagent: `task` (OpenCode 1) and `subagent` (OpenCode 2). */
+export const SUB_AGENT_TOOL_NAMES = new Set(["task", "subagent"])
+
+export function isSubAgentTool(tool: unknown): boolean {
+    return typeof tool === "string" && SUB_AGENT_TOOL_NAMES.has(tool)
+}
+
 export function getSubAgentId(part: any): string | null {
-    const sessionId = part?.state?.metadata?.sessionId
+    const metadata = part?.state?.metadata
+    const sessionId = metadata?.sessionId ?? metadata?.sessionID
     if (typeof sessionId !== "string") {
         return null
     }

@@ -88,7 +88,7 @@ function extractParameterKey(tool: string, parameters: any): string {
         return "read todo list"
     }
 
-    if (tool === "task" && parameters.description) {
+    if ((tool === "task" || tool === "subagent") && parameters.description) {
         return parameters.description
     }
     if (tool === "skill" && parameters.name) {

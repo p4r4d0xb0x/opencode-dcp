@@ -7,6 +7,12 @@ export type PermissionConfig = Record<string, PermissionValue> | undefined
 export interface HostPermissionSnapshot {
     global: PermissionConfig
     agents: Record<string, PermissionConfig>
+    /**
+     * Host-reported availability of the compress tool for the current model call.
+     * OpenCode 2 evaluates permission rules itself and removes denied tools from
+     * the request; `false` therefore means "denied for this agent".
+     */
+    toolAvailable?: boolean
 }
 
 type PermissionRule = {
@@ -82,6 +88,10 @@ export const resolveEffectiveCompressPermission = (
     agentName?: string,
 ): PermissionAction => {
     if (basePermission === "deny") {
+        return "deny"
+    }
+
+    if (hostPermissions.toolAvailable === false) {
         return "deny"
     }
 

@@ -7,6 +7,7 @@ import {
 } from "../protected-patterns"
 import {
     buildSubagentResultText,
+    isSubAgentTool,
     getSubAgentId,
     mergeSubagentResult,
 } from "../subagents/subagent-results"
@@ -153,7 +154,7 @@ export async function appendProtectedTools(
 
                     if (
                         allowSubAgents &&
-                        part.tool === "task" &&
+                        isSubAgentTool(part.tool) &&
                         part.state?.status === "completed" &&
                         typeof part.state?.output === "string"
                     ) {
