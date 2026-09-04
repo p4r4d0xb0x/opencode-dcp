@@ -31,8 +31,9 @@ export default Plugin.define({
             })
         })
 
+        let stopCommands: (() => void) | undefined
         if (config.commands.enabled) {
-            registerCommands(api, [
+            stopCommands = registerCommands(api, [
                 {
                     title: "DCP",
                     name: "panel",
@@ -64,6 +65,9 @@ export default Plugin.define({
             ])
         }
 
-        return () => stopToasts()
+        return () => {
+            stopCommands?.()
+            stopToasts()
+        }
     },
 })
